@@ -13,7 +13,7 @@ namespace Moderation.Core
         [LoadColumn(0)] public string Text { get; set; } = "";
     }
     public class Conclusion
-    {       
+    {
         [LoadColumn(1)] public float Sexual { get; set; }
         [LoadColumn(2)] public float Harassment { get; set; }
         [LoadColumn(3)] public float Hate { get; set; }

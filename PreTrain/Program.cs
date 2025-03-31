@@ -22,7 +22,13 @@ namespace PreTrain
             {
                 case "1":
                     AITag.StartTag();
-                    break;              
+                    break;
+                case "2":
+                    Training.TrainModel();
+                    break;
+                case "3":
+                    Training.TestModel();
+                    break;
                 default:
                     break;
             }
