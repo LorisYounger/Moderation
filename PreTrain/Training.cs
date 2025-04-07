@@ -1,16 +1,10 @@
 ﻿using Microsoft.ML;
 using Moderation.Core;
-using System;
-using System.Collections.Generic;
-using System.Linq;
 using System.Text;
-using System.Threading.Tasks;
-using Newtonsoft.Json.Serialization;
 using Newtonsoft.Json;
 using Microsoft.ML.Transforms.Text;
-using Microsoft.ML.Trainers.FastTree;
 using Microsoft.ML.Data;
-using static ChatGPT.API.Framework.Message;
+using Microsoft.ML.Trainers.LightGbm;
 namespace PreTrain
 {
     class Training
@@ -78,22 +72,36 @@ namespace PreTrain
                 double bestscore = 0;
                 for (int i = 0; i < 100; i++)//循环训练最好结果
                 {
-                    //int NumberOfTrees = rnd.Next(70, 300);
-                    // 动态调整参数
-                    var trainerOptions = new FastTreeRegressionTrainer.Options
-                    {
-                        NumberOfTrees = rnd.Next(70, 300),
-                        //NumberOfLeaves = NumberOfTrees / 5,
-                        //LearningRate = rnd.NextDouble() * 0.2 + 0.1,
-                        LabelColumnName = modetype,
-                        FeatureColumnName = "Features",
-                        //MinimumExampleCountPerLeaf = 10 + NumberOfTrees / 10, // 防止过拟合
-                    };
 
                     // 划分训练集和测试集（20% 测试数据）
                     var trainTestSplit = mlContext.Data.TrainTestSplit(data, testFraction: 0.2);
 
-                    var trainingPipeline = dataPrepPipeline.Append(mlContext.Regression.Trainers.FastTree(trainerOptions));
+                    // 修改2：替换训练器选项为 LightGBM
+                    var trainerOptions = new LightGbmRegressionTrainer.Options
+                    {
+                        // LightGBM 核心参数
+                        NumberOfIterations = rnd.Next(70, 300), // 对应 FastTree 的 NumberOfTrees
+                        LearningRate = rnd.NextDouble() * 0.2 + 0.1, // 建议保留显式设置
+                        LabelColumnName = modetype,
+                        FeatureColumnName = "Features",
+
+                        // LightGBM 特有参数优化
+                        NumberOfLeaves = rnd.Next(20, 100),       // 比 FastTree 更敏感的参数
+                        MinimumExampleCountPerLeaf = rnd.Next(10, 50),
+                        Booster = new GradientBooster.Options
+                        {
+                            SubsampleFraction = rnd.NextDouble() * 0.5 + 0.5, // 随机采样数据
+                            FeatureFraction = rnd.NextDouble() * 0.5 + 0.5     // 随机采样特征
+                        },
+
+                        // 并行优化
+                        NumberOfThreads = Environment.ProcessorCount // 启用多线程
+                    };
+
+                    // 修改3：替换训练器为 LightGBM
+                    var trainingPipeline = dataPrepPipeline.Append(mlContext.Regression.Trainers.LightGbm(trainerOptions));
+
+
                     // 训练模型
                     var model = trainingPipeline.Fit(trainTestSplit.TrainSet);
 
@@ -107,7 +115,7 @@ namespace PreTrain
                     sb.AppendLine($"MAE: {metrics.MeanAbsoluteError}");
                     sb.AppendLine($"MSE: {metrics.MeanSquaredError}");
                     sb.AppendLine($"Score: {score:p2}");
-                    sb.AppendLine($"NumberOfTrees: {trainerOptions.NumberOfTrees}");
+                    sb.AppendLine($"NumberOfIterations: {trainerOptions.NumberOfIterations}");
                     sb.AppendLine($"LearningRate: {trainerOptions.LearningRate}");
                     //计算整体分数
                     predictions = model.Transform(data);
@@ -192,7 +200,7 @@ namespace PreTrain
                     {
                         var predictionEngine = mlContext.Model.CreatePredictionEngine<TextData, TextPrediction>(models[modelType]);
                         var prediction = predictionEngine.Predict(new TextData { Text = input });
-                        results.GetType().GetProperty(modelType).SetValue(results, prediction.Score);
+                        results.GetType().GetProperty(modelType)?.SetValue(results, prediction.Score);
                     }
                 }
 
